@@ -10,7 +10,7 @@ O worker foi projetado para ser robusto e escalável. Ele escuta uma fila de job
 
 ```mermaid
 graph TD
-    subgraph "Sistema Externo"
+    subgraph "Aplicação Principal"
         A[API / Cliente]
     end
 
@@ -22,23 +22,19 @@ graph TD
     subgraph "Worker (Este Projeto)"
         C(Load Tester Worker)
     end
-    
-    subgraph "Serviço de Resultados"
-        E[API / Processador de Resultados]
-    end
 
     A -- Adiciona Job --> B
     C -- Consome Job --> B
     C -- Envia Resultado --> D
-    E -- Consome Resultado --> D
+    D -- Resultado é consumido pela --> A
 ```
 
 A arquitetura é baseada em um sistema de filas para garantir o desacoplamento e a resiliência do sistema:
 
-1.  **Fila de Jobs (`load-tester-jobs`):** Um serviço externo (uma API, por exemplo) adiciona jobs a esta fila. Cada job é uma solicitação para executar um teste de carga.
-2.  **Worker (Este Projeto):** O worker consome os jobs da fila `load-tester-jobs`. A lógica de execução do teste é encapsulada no `RunLoadTestUseCase`.
-3.  **Fila de Resultados (`load-tester-results`):** Após a execução de um teste, o worker adiciona um novo job contendo os resultados completos (estatísticas, erros, etc.) a esta fila.
-4.  **Processador de Resultados:** Um segundo worker (fora do escopo deste projeto, como a [Load Tester API](https://github.com/luisfelix-93/load-tester-api)) consome a fila de resultados para, por exemplo, salvar os dados em um banco de dados.
+1.  **Fila de Jobs (`load-tester-jobs`):** A aplicação principal (API) adiciona jobs a esta fila. Cada job é uma solicitação para executar um teste de carga.
+2.  **Worker (Este Projeto):** O worker consome os jobs da fila `load-tester-jobs`.
+3.  **Fila de Resultados (`load-tester-results`):** Após a execução de um teste, o worker adiciona um novo job contendo os resultados completos a esta fila.
+4.  **Consumo de Resultados:** A mesma aplicação principal (API) consome a fila de resultados para, por exemplo, salvar os dados em um banco de dados e notificar o usuário.
 
 Este design permite que a execução dos testes (que pode ser demorada) não bloqueie o serviço principal e que o armazenamento dos resultados seja tratado de forma independente.
 
