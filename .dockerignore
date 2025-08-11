@@ -1,0 +1,17 @@
+# Dependências do Node.js
+node_modules
+
+# Arquivos de build e de ambiente
+dist
+.env
+
+# Metadados e logs
+npm-debug.log
+
+# Arquivos do Git
+.git
+.gitignore
+
+# Documentação
+README.md
+
