@@ -8,122 +8,146 @@ O worker foi projetado para ser robusto e escalável. Ele escuta uma fila de job
 
 ## Arquitetura
 
+```mermaid
+graph TD
+    subgraph "Sistema Externo"
+        A[API / Cliente]
+    end
+
+    subgraph "Infraestrutura de Filas (Redis)"
+        B[(load-tester-jobs)]
+        D[(load-tester-results)]
+    end
+
+    subgraph "Worker (Este Projeto)"
+        C(Load Tester Worker)
+    end
+    
+    subgraph "Serviço de Resultados"
+        E[API / Processador de Resultados]
+    end
+
+    A -- Adiciona Job --> B
+    C -- Consome Job --> B
+    C -- Envia Resultado --> D
+    E -- Consome Resultado --> D
+```
+
 A arquitetura é baseada em um sistema de filas para garantir o desacoplamento e a resiliência do sistema:
 
 1.  **Fila de Jobs (`load-tester-jobs`):** Um serviço externo (uma API, por exemplo) adiciona jobs a esta fila. Cada job é uma solicitação para executar um teste de carga.
 2.  **Worker (Este Projeto):** O worker consome os jobs da fila `load-tester-jobs`. A lógica de execução do teste é encapsulada no `RunLoadTestUseCase`.
 3.  **Fila de Resultados (`load-tester-results`):** Após a execução de um teste, o worker adiciona um novo job contendo os resultados completos (estatísticas, erros, etc.) a esta fila.
-4.  **Processador de Resultados (Outro Serviço):** Um segundo worker (fora do escopo deste projeto) consome a fila de resultados para, por exemplo, salvar os dados em um banco de dados, notificar usuários, etc.
+4.  **Processador de Resultados:** Um segundo worker (fora do escopo deste projeto, como a [Load Tester API](https://github.com/luisfelix-93/load-tester-api)) consome a fila de resultados para, por exemplo, salvar os dados em um banco de dados.
 
 Este design permite que a execução dos testes (que pode ser demorada) não bloqueie o serviço principal e que o armazenamento dos resultados seja tratado de forma independente.
 
 ## Funcionalidades
 
-- **Processamento Assíncrono:** Utiliza BullMQ para processar jobs em segundo plano, sem bloquear a aplicação principal.
-- **Configuração Flexível de Testes:** Permite configurar URL, método HTTP, número de requisições, concorrência, payload, headers e timeout para cada teste.
-- **Tratamento de Erros Robusto:** Um erro em um único job é capturado e registrado, mas não derruba o serviço. O BullMQ pode ser configurado para tentar reexecutar jobs que falharam.
-- **Código Modular:** A lógica de negócio (`UseCase`) é separada da infraestrutura de filas (`Processor`), seguindo princípios de Clean Architecture.
+- **Processamento Assíncrono:** Utiliza BullMQ para processar jobs em segundo plano.
+- **Configuração Flexível de Testes:** Permite configurar URL, método HTTP, concorrência, payload, headers e timeout.
+- **Tratamento de Erros Robusto:** Erros em jobs individuais são capturados sem derrubar o serviço.
+- **Código Modular:** A lógica de negócio (`UseCase`) é separada da infraestrutura de filas (`Processor`).
 
 ## Pré-requisitos
 
 - Node.js (versão 16 ou superior)
-- NPM ou Yarn
-- Um servidor Redis em execução.
+- NPM
+- Um servidor Redis em execução
+- Docker (para execução em container)
 
-## Instalação e Configuração
+## Instalação
 
-1.  Clone o repositório:
-    ```bash
-    git clone <url-do-seu-repositorio>
-    cd load-tester-worker
-    ```
+1. Clone o repositório e entre no diretório:
+   ```bash
+   git clone <url-do-seu-repositorio>
+   cd load-tester-worker
+   ```
 
-2.  Instale as dependências:
-    ```bash
-    npm install
-    ```
+2. Instale as dependências:
+   ```bash
+   npm install
+   ```
 
-3.  Crie um arquivo de configuração de ambiente `.env` na raiz do projeto, baseado no arquivo `.env.example`:
-    ```bash
-    cp .env.example .env
-    ```
+## Configuração
 
-4.  Edite o arquivo `.env` com as informações de conexão do seu servidor Redis:
-    ```ini
-    # .env
-    REDIS_HOST=127.0.0.1
-    REDIS_PORT=6379
-    ```
+Crie um arquivo de configuração de ambiente chamado `.env` na raiz do projeto com o seguinte conteúdo, ajustando os valores para o seu ambiente Redis.
 
-## Como Executar o Worker
+```ini
+# .env
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
 
-Para iniciar o worker e começar a processar jobs da fila, execute o seguinte comando:
-
-```bash
-npm start
+# Nomes das filas (opcional, pode usar o padrão)
+QUEUE_LOAD_TESTS=load-tester-jobs
+QUEUE_RESULTS=load-tester-results
 ```
 
-*Nota: Adicione o script `start` ao seu `package.json` para facilitar a execução:*
+## Uso
+
+### Executando os Testes
+
+Para rodar a suíte de testes unitários e de integração, execute:
+
+```bash
+npm test
+```
+
+### Modo de Desenvolvimento
+
+Para executar o worker em modo de desenvolvimento com `ts-node` (que compila e executa os arquivos TypeScript em tempo real), você pode adicionar o seguinte script ao seu `package.json`:
+
 ```json
-// package.json
 "scripts": {
-  "start": "ts-node src/index.ts",
-  "benchmark": "ts-node benchmarks/runLoadTest.benchmark.ts"
+  "dev": "ts-node src/index.ts",
+  ...
 }
 ```
 
-O console exibirá uma mensagem indicando que o worker está rodando e aguardando por novos jobs.
+E então executar:
+```bash
+npm run dev
+```
+
+### Build e Execução para Produção
+
+1. **Compile o código TypeScript para JavaScript:**
+   ```bash
+   npm run build
+   ```
+   Este comando irá gerar os arquivos compilados no diretório `dist/`.
+
+2. **Inicie o worker:**
+   ```bash
+   npm start
+   ```
+   Este comando executa o arquivo `dist/index.js` e é a forma recomendada para produção.
 
 ## Executando com Docker (Recomendado)
 
 Para facilitar a implantação e garantir um ambiente consistente, o projeto está configurado para ser executado em um container Docker.
 
-### Pré-requisitos
+1. **Construa a imagem Docker:**
+   Na raiz do projeto, execute:
+   ```sh
+   docker build -t load-tester-worker .
+   ```
 
-*   **Docker** instalado e em execução.
+2. **Execute o container:**
+   Para executar o worker, você precisa garantir que ele consiga se conectar à sua instância do Redis.
 
-### Build da Imagem
+   **Exemplo (conectando a um Redis na mesma rede Docker ou localmente via `--network="host"`):**
+   ```bash
+   docker run --rm --name my-worker \
+     -e REDIS_HOST=seu-host-redis \
+     -e REDIS_PORT=sua-porta-redis \
+     load-tester-worker
+   ```
+   > **Nota:** Para um ambiente de desenvolvimento ou produção mais robusto, é altamente recomendado o uso do `docker-compose` para orquestrar o serviço do worker e do Redis juntos.
 
-Na raiz do diretório `load-tester-worker`, execute o comando abaixo para construir a imagem:
+## Estrutura do Código
 
-```sh
-docker build -t load-tester-worker .
-```
-
-### Executando o Container
-
-Para executar o worker, você precisa garantir que ele consiga se conectar a uma instância do Redis.
-
-**Exemplo (conectando a um Redis na rede do host):**
-
-Se você tem um Redis rodando localmente (`127.0.0.1:6379`), pode usar a rede do host para permitir que o container o acesse.
-
-```sh
-docker run --rm --name my-worker --network="host" load-tester-worker
-```
-
-**Exemplo (usando variáveis de ambiente para um Redis customizado):**
-
-```sh
-docker run --rm --name my-worker \
-  -e REDIS_HOST=seu-host-redis \
-  -e REDIS_PORT=sua-porta-redis \
-  health-check-worker
-```
-> **Nota:** Para um ambiente de desenvolvimento ou produção mais robusto, é altamente recomendado o uso do `docker-compose` para orquestrar o serviço do worker e do Redis juntos.
-
-## Como Funciona (Estrutura do Código)
-
-- **`src/index.ts`**: Ponto de entrada da aplicação. Ele inicializa a conexão com o Redis, instancia o `LoadTestProcessor` e o `RunLoadTestUseCase`, e inicia o `Worker` do BullMQ para escutar a fila `load-tester-jobs`.
-
-- **`src/infrastructure/jobs/loadTest.processor.ts`**: Contém a classe `LoadTestProcessor`. Seu método `loadTestProcessor` é a função que o BullMQ executa para cada job. Ele:
-    1.  Extrai e valida os dados do job.
-    2.  Define valores padrão para parâmetros opcionais (como método, headers, etc.).
-    3.  Chama `this.useCase.execute(...)` para realizar o teste.
-    4.  Adiciona o resultado na fila `load-tester-results`.
-    5.  Captura erros, loga os detalhes e relança o erro para que o BullMQ possa marcar o job como falho.
-
-- **`src/services/runLoadTest.usecase.ts`**: (Inferido) Contém a lógica de negócio principal. É responsável por orquestrar as requisições HTTP concorrentes e calcular as estatísticas de performance (tempo total, requisições por segundo, latência média, etc.).
-
-- **`src/infrastructure/config/index.ts`**: Centraliza as configurações da aplicação, como os nomes das filas e os dados de conexão do Redis, lendo-os do arquivo `.env`.
-
+- **`src/index.ts`**: Ponto de entrada da aplicação. Inicializa a conexão com o Redis, as dependências e o `Worker` do BullMQ.
+- **`src/infrastructure/jobs/loadTest.processor.ts`**: Contém a classe `LoadTestProcessor`, que executa a lógica para cada job, chamando o `UseCase` e enviando o resultado para a fila de resultados.
+- **`src/services/runLoadTest.usecase.ts`**: Contém a lógica de negócio principal, orquestrando as requisições HTTP concorrentes e calculando as estatísticas de performance.
+- **`src/infrastructure/config/index.ts`**: Centraliza as configurações da aplicação, lendo-as do arquivo `.env`.

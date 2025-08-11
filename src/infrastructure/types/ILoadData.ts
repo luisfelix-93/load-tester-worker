@@ -1,4 +1,5 @@
 export interface ILoadData {
+    testId: string,
     targetUrl: string,
     numRequests: number,
     concurrency: number,

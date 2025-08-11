@@ -1,6 +1,7 @@
 import { Worker } from 'bullmq';
 import { Config } from './infrastructure/config';
 import { LoadTestProcessor } from './infrastructure/jobs/loadTest.processor';
+import { loadTestResultsQueue } from './infrastructure/jobs/queue';
 import { RunLoadTestUseCase } from './services/runLoadTest.usecase';
 
 /**
@@ -13,7 +14,7 @@ async function main() {
     // 1. Injeção de Dependência: Instanciamos as classes necessárias.
     // O Processor depende do UseCase, então criamos o UseCase primeiro.
     const runLoadTestUseCase = new RunLoadTestUseCase();
-    const loadTestProcessor = new LoadTestProcessor(runLoadTestUseCase);
+    const loadTestProcessor = new LoadTestProcessor(runLoadTestUseCase, loadTestResultsQueue);
 
     // 2. Conexão com o Redis: Define os detalhes da conexão para o BullMQ.
     const connection = {

@@ -4,6 +4,7 @@ import { makeRequest, MakeRequestOptions } from "../utils/makeRequest";
 
 export interface IRunLoadTestUseCase {
     execute(
+        testId: string,
         targetUrl: string, 
         numRequests: number, 
         concurrency: number,
@@ -18,6 +19,7 @@ export class RunLoadTestUseCase implements IRunLoadTestUseCase {
     constructor() {}
 
     async execute(
+        testId: string,
         targetUrl: string, 
         numRequests: number, 
         concurrency: number,
@@ -82,6 +84,7 @@ export class RunLoadTestUseCase implements IRunLoadTestUseCase {
         };
 
         const loadTestData: ILoadTest = {
+            testId,
             url: targetUrl,
             requests: numRequests,
             concurrency,
