@@ -44,6 +44,7 @@ Este design permite que a execução dos testes (que pode ser demorada) não blo
 - **Configuração Flexível de Testes:** Permite configurar URL, método HTTP, concorrência, payload, headers e timeout.
 - **Tratamento de Erros Robusto:** Erros em jobs individuais são capturados sem derrubar o serviço.
 - **Código Modular:** A lógica de negócio (`UseCase`) é separada da infraestrutura de filas (`Processor`).
+- **Job Locking (Bloqueio de Jobs):** Para evitar que um mesmo job seja processado por múltiplos workers simultaneamente ou reprocessado em caso de falha inesperada, cada job é bloqueado por um período configurável (`lockDuration`). Se o worker não concluir o processamento nesse tempo, o job é automaticamente liberado para uma nova tentativa.
 
 ## Pré-requisitos
 
@@ -56,7 +57,7 @@ Este design permite que a execução dos testes (que pode ser demorada) não blo
 
 1. Clone o repositório e entre no diretório:
    ```bash
-   git clone <url-do-seu-repositorio>
+   git clone <https://github.com/luisfelix-93/load-tester-worker.git>
    cd load-tester-worker
    ```
 
@@ -143,7 +144,7 @@ Para facilitar a implantação e garantir um ambiente consistente, o projeto est
 
 ## Estrutura do Código
 
-- **`src/index.ts`**: Ponto de entrada da aplicação. Inicializa a conexão com o Redis, as dependências e o `Worker` do BullMQ.
+- **`src/index.ts`**: Ponto de entrada da aplicação. Inicializa a conexão com o Redis, as dependências e o `Worker` do BullMQ. É aqui que são configurados os parâmetros do worker, como o `lockDuration`, que garante que um job não seja reprocessado acidentalmente em caso de falha.
 - **`src/infrastructure/jobs/loadTest.processor.ts`**: Contém a classe `LoadTestProcessor`, que executa a lógica para cada job, chamando o `UseCase` e enviando o resultado para a fila de resultados.
 - **`src/services/runLoadTest.usecase.ts`**: Contém a lógica de negócio principal, orquestrando as requisições HTTP concorrentes e calculando as estatísticas de performance.
 - **`src/infrastructure/config/index.ts`**: Centraliza as configurações da aplicação, lendo-as do arquivo `.env`.

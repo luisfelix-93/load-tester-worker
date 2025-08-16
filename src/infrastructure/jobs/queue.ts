@@ -7,4 +7,6 @@ const connection = {
 };
 
 
-export const loadTestResultsQueue = new Queue(Config.queues.loadTestResults, { connection});
+export const loadTestResultsQueue = new Queue(Config.queues.loadTestResults, { 
+    connection
+ });
