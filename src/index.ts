@@ -31,7 +31,10 @@ async function main() {
     const worker = new Worker(
         Config.queues.loadTestJobs,
         loadTestProcessor.loadTestProcessor.bind(loadTestProcessor),
-        { connection }
+        {
+            connection,
+            lockDuration: 120000 // 2 minutos
+        }
     );
 
     // 4. Listeners de Eventos (para monitoramento e depuração)
