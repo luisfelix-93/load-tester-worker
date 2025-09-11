@@ -12,9 +12,7 @@ async function main() {
     console.log('▶️  Iniciando o worker de teste de carga...');
 
     // 1. Injeção de Dependência: Instanciamos as classes necessárias.
-    // O Processor depende do UseCase, então criamos o UseCase primeiro.
-    const runLoadTestUseCase = new RunLoadTestUseCase();
-    const loadTestProcessor = new LoadTestProcessor(runLoadTestUseCase, loadTestResultsQueue);
+    const loadTestProcessor = new LoadTestProcessor(loadTestResultsQueue);
 
     // 2. Conexão com o Redis: Define os detalhes da conexão para o BullMQ.
     const connection = {
