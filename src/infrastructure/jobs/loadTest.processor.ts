@@ -2,6 +2,8 @@ import { Job, Queue } from "bullmq";
 import { ILoadData } from "../types/ILoadData";
 import { Worker, WorkerOptions } from 'worker_threads';
 import * as path from 'path';
+import { activeJobsGauge, jobDurationHistogram, jobsProcessedCounter } from "../monitoring/metrics";
+import logger from "../logging/logger";
 
 export interface ILoadTestProcessor {
     loadTestProcessor(job: Job<ILoadData>): Promise<any>;
@@ -13,7 +15,14 @@ export class LoadTestProcessor implements ILoadTestProcessor {
     ){}
 
     async loadTestProcessor(job: Job<ILoadData>): Promise<any> {
-        console.log(`✅ Despachando job #${job.id} para um worker thread. URL: ${job.data.targetUrl}, teste ID: ${job.data.testId}`);
+        logger.info(`✅ Despachando job #${job.id} para um worker thread.`, {
+            jobId: job.id,
+            testId: job.data.testId,
+            targetUrl: job.data.targetUrl
+        });
+        
+        activeJobsGauge.inc(); // Aumenta o medidor de jobs ativos
+        const endTimer = jobDurationHistogram.startTimer(); // Inicia o timer de duração
 
         try {
             const loadTestResult = await new Promise((resolve, reject) => {
@@ -25,7 +34,6 @@ export class LoadTestProcessor implements ILoadTestProcessor {
                     workerData: job.data
                 };
 
-                // Se estiver no ambiente de teste, precisamos registrar o ts-node para o worker
                 if (isTestEnv) {
                     workerOptions.execArgv = ['-r', 'ts-node/register'];
                 }
@@ -50,15 +58,24 @@ export class LoadTestProcessor implements ILoadTestProcessor {
             });
 
             await this.resultsQueue.add('result', loadTestResult);
-            console.log(`📦 Job #${job.id} finalizado pelo worker e resultado enviado para a fila de resultados.`);
+            logger.info(`📦 Job #${job.id} finalizado e resultado enviado para a fila de resultados.`);
+            
+            jobsProcessedCounter.inc({ status: 'success' }); // Incrementa o contador de sucesso
+            
             return loadTestResult;
         } catch (error: any) {
-            console.warn(`⚠️ Erro ao processar job #${job.id} no worker thread.`, {
+            logger.warn(`⚠️ Erro ao processar job #${job.id} no worker thread.`, {
                 jobId: job.id,
                 testId: job.data.testId,
                 error: error.message,
             });
+
+            jobsProcessedCounter.inc({ status: 'failure' }); // Incrementa o contador de falha
+
             throw error;
+        } finally {
+            endTimer(); // Finaliza o timer de duração, registrando o tempo
+            activeJobsGauge.dec(); // Diminui o medidor de jobs ativos
         }
     }
 }
