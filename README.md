@@ -1,10 +1,10 @@
 # Load Tester Worker
 
-Este projeto é um serviço de "worker" (trabalhador) em Node.js, construído com TypeScript, responsável por processar e executar testes de carga de forma assíncrona. Ele utiliza a biblioteca [BullMQ](https://bullmq.io/) para gerenciar uma fila de trabalhos (jobs) baseada em Redis.
+Este projeto é um serviço de "worker" (trabalhador) em Node.js, construído com TypeScript, responsável por processar e executar testes de carga de forma concorrente e assíncrona. Ele utiliza a biblioteca [BullMQ](https://bullmq.io/) para gerenciar uma fila de trabalhos (jobs) baseada em Redis.
 
 ## Visão Geral
 
-O worker foi projetado para ser robusto e escalável. Ele escuta uma fila de jobs, onde cada job contém os parâmetros para um teste de carga específico (URL alvo, número de requisições, concorrência, etc.). Ao receber um job, o worker executa o teste e, ao final, envia os resultados para uma outra fila, para que possam ser processados e armazenados por outro serviço.
+O worker foi projetado para ser robusto e escalável. Ele escuta uma fila de jobs, onde cada job contém os parâmetros para um teste de carga específico (URL alvo, número de requisições, concorrência, etc.). Ao receber um job, o worker o despacha para uma thread separada para execução, permitindo o processamento paralelo de múltiplos testes. Ao final, os resultados são enviados para uma outra fila, para que possam ser processados e armazenados por outro serviço.
 
 ## Arquitetura
 
@@ -29,18 +29,12 @@ graph TD
     D -- Resultado é consumido pela --> A
 ```
 
-A arquitetura é baseada em um sistema de filas para garantir o desacoplamento e a resiliência do sistema:
-
-1.  **Fila de Jobs (`load-tester-jobs`):** A aplicação principal (API) adiciona jobs a esta fila. Cada job é uma solicitação para executar um teste de carga.
-2.  **Worker (Este Projeto):** O worker consome os jobs da fila `load-tester-jobs`.
-3.  **Fila de Resultados (`load-tester-results`):** Após a execução de um teste, o worker adiciona um novo job contendo os resultados completos a esta fila.
-4.  **Consumo de Resultados:** A mesma aplicação principal (API) consome a fila de resultados para, por exemplo, salvar os dados em um banco de dados e notificar o usuário.
-
-Este design permite que a execução dos testes (que pode ser demorada) não bloqueie o serviço principal e que o armazenamento dos resultados seja tratado de forma independente.
+A arquitetura é baseada em um sistema de filas para garantir o desacoplamento e a resiliência do sistema. Internamente, o `Load Tester Worker` utiliza uma arquitetura baseada em `worker_threads` para alcançar alta concorrência. Quando um job é consumido da fila, o processador principal não executa o teste diretamente. Em vez disso, ele atua como um despachante, iniciando um `worker thread` dedicado para aquele job específico. Isso permite que o processo principal fique livre para consumir novos jobs, possibilitando a execução paralela de múltiplos testes de carga e aproveitando ao máximo os recursos da máquina.
 
 ## Funcionalidades
 
 - **Processamento Assíncrono:** Utiliza BullMQ para processar jobs em segundo plano.
+- **Execução Concorrente de Testes:** Graças ao uso de `worker_threads` do Node.js, o worker pode processar múltiplos testes de carga simultaneamente, cada um em sua própria thread, otimizando o uso de CPUs multi-core.
 - **Configuração Flexível de Testes:** Permite configurar URL, método HTTP, concorrência, payload, headers e timeout.
 - **Tratamento de Erros Robusto:** Erros em jobs individuais são capturados sem derrubar o serviço.
 - **Código Modular:** A lógica de negócio (`UseCase`) é separada da infraestrutura de filas (`Processor`).
@@ -144,7 +138,8 @@ Para facilitar a implantação e garantir um ambiente consistente, o projeto est
 
 ## Estrutura do Código
 
-- **`src/index.ts`**: Ponto de entrada da aplicação. Inicializa a conexão com o Redis, as dependências e o `Worker` do BullMQ. É aqui que são configurados os parâmetros do worker, como o `lockDuration`, que garante que um job não seja reprocessado acidentalmente em caso de falha.
-- **`src/infrastructure/jobs/loadTest.processor.ts`**: Contém a classe `LoadTestProcessor`, que executa a lógica para cada job, chamando o `UseCase` e enviando o resultado para a fila de resultados.
-- **`src/services/runLoadTest.usecase.ts`**: Contém a lógica de negócio principal, orquestrando as requisições HTTP concorrentes e calculando as estatísticas de performance.
+- **`src/index.ts`**: Ponto de entrada da aplicação. Inicializa a conexão com o Redis, as dependências e o `Worker` do BullMQ. É aqui que são configurados os parâmetros do worker, como o `lockDuration`.
+- **`src/infrastructure/jobs/loadTest.processor.ts`**: Contém a classe `LoadTestProcessor`. Ele atua como um despachante: ao receber um job, ele inicia um `worker thread` para executar o teste e aguarda o resultado.
+- **`src/infrastructure/workers/loadTest.worker.ts`**: Ponto de entrada para o `worker thread`. Este script recebe os dados do job do processo principal, instancia e executa o `RunLoadTestUseCase`, e envia o resultado de volta.
+- **`src/services/runLoadTest.usecase.ts`**: Contém a lógica de negócio principal, orquestrando as requisições HTTP concorrentes e calculando as estatísticas de performance. Esta classe agora é executada dentro de um `worker thread` isolado.
 - **`src/infrastructure/config/index.ts`**: Centraliza as configurações da aplicação, lendo-as do arquivo `.env`.
